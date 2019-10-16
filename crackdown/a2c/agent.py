@@ -6,6 +6,7 @@ import gym
 from gym import spaces
 
 from ..core.agent import Agent
+from ..core.report import Report
 from ..memory import GameReplay
 from ..embedding.image import ImageEmbedding
 from ..embedding import transforms
@@ -29,20 +30,6 @@ def weights_init(m):
 def weight_reset(m):
     if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
         m.reset_parameters()
-
-
-class Report:
-    def add_scalar(self, *args, **kwargs):
-        pass
-
-    def add_scalars(self, *args, **kwargs):
-        pass
-
-    def add_image(self, *args, **kwargs):
-        pass
-
-    def add_images(self, *args, **kwargs):
-        pass
 
 
 class ActorCriticAgent(Agent):

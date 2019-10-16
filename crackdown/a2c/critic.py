@@ -3,7 +3,7 @@ import torch.nn as nn
 
 
 class TemporalDifferenceCritic(nn.Module):
-    def __init__(self, embedding_dim: int = 16, action_dim: int = 8, discount_factor: float = 0.95):
+    def __init__(self, embedding_dim: int = 16, action_dim: int = 0, discount_factor: float = 0.95):
         super().__init__()
         
         self.embedding_dim = embedding_dim
@@ -20,18 +20,24 @@ class TemporalDifferenceCritic(nn.Module):
             
         self.criterion = nn.MSELoss()
         
-    def forward(self, embedding, action):
+    def forward(self, embedding: torch.tensor, action: torch.tensor = None):
+        if action is None:
+            action = torch.zeros((embedding.shape[0], self.action_dim))
+
         x = torch.cat([embedding, action], dim=-1)
         quality = self.transform(x)
         
         return quality
     
-    def update(self, embedding, action, reward: float, next_embedding, next_action):
+    def update(self, embedding, action, reward: float, next_embedding, next_action, next_quality=None):
         quality = self.forward(embedding, action)
-        next_quality = self.forward(next_embedding, next_action.detach())
+
+        if next_quality is None:
+            with torch.no_grad():
+                next_quality = self.forward(next_embedding, next_action.detach())
         
         # temporal difference residual
-        true_quality = reward + self.discount_factor * next_quality.detach()
+        true_quality = reward + self.discount_factor * next_quality
         advantage = true_quality - quality
         
         loss = self.criterion(true_quality, quality)
