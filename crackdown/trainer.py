@@ -34,6 +34,7 @@ class Trainer:
         state = env.render()
 
         for step_i in itertools.count(1):
+            print('Step:', step_i)
             next_state, reward, done, info = env.step(action)
 
             rewards.append(reward)
@@ -48,9 +49,9 @@ class Trainer:
             if done:
                 print("Episode finished after {} timesteps".format(step_i + 1))
                 break
-            elif (self.episode_steps_limit > 0) and (step_i > self.episode_steps_limit):
+            elif (self.episode_steps_limit > 0) and (step_i >= self.episode_steps_limit):
                 break
-            if (steps_limit > 0) and (step_i > steps_limit):
+            if (steps_limit > 0) and (step_i >= steps_limit):
                 break
 
         return {
@@ -63,7 +64,7 @@ class Trainer:
         assert isinstance(steps_limit, int)
         assert isinstance(episodes_limit, int)
 
-        passed_steps = steps_limit
+        passed_steps = 0
         episode_i = 0
         rewards = []
 

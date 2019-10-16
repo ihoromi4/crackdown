@@ -1,6 +1,10 @@
 import torch
 import torch.nn as nn
 
+__all__ = [
+    'StaticMaskAttention',
+]
+
 
 def get_basis(width, height, device='cpu'):
     w = torch.linspace(-1, 1, width)
@@ -56,6 +60,6 @@ class StaticMaskAttention(nn.Module):
         masked = torch.cat(masked, dim=1)
         
         if self.reduce:
-             masked = torch.max(torch.max(masked, dim=-1)[0], dim=-1)[0]
+            masked = torch.max(torch.max(masked, dim=-1)[0], dim=-1)[0]
                 
         return masked

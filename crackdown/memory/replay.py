@@ -1,6 +1,10 @@
 import numpy as np
 from collections import deque
 
+__all__ = [
+    'GameReplay',
+]
+
 
 class GameReplay:
     def __init__(self, maxlen: int = None):

@@ -2,12 +2,13 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torchvision.transforms as T
+import gym
 from gym import spaces
 
 from ..core.agent import Agent
-from ..core.replay import GameReplay
-from .embedding import ViewEmbedding
+from ..memory import GameReplay
+from ..embedding.image import ImageEmbedding
+from ..embedding import transforms
 from .actor import Actor
 from .critic import TemporalDifferenceCritic
 
@@ -30,58 +31,60 @@ def weight_reset(m):
         m.reset_parameters()
 
 
-class ToNumpy:
-    def __call__(self, img):
-        arr = np.array(img)
-        
-        if len(arr.shape) == 2:
-            arr = arr[:, :, np.newaxis]
-            
-        return arr
+class Report:
+    def add_scalar(self, *args, **kwargs):
+        pass
 
+    def add_scalars(self, *args, **kwargs):
+        pass
 
-class Transpose:
-    def __init__(self, order):
-        self.order = order
-        
-    def __call__(self, arr):
-        return np.transpose(arr, self.order)
+    def add_image(self, *args, **kwargs):
+        pass
+
+    def add_images(self, *args, **kwargs):
+        pass
 
 
 class ActorCriticAgent(Agent):
-    def __init__(self, observation_space: spaces.Box, action_space: spaces.MultiBinary, replay=None):
+    def __init__(self,
+                 env: gym.Env,
+                 transform: transforms.Compose = None,
+                 replay: object = None,
+                 report: object = None):
+
         super().__init__()
-        
+
+        observation_space = env.observation_space
+        action_space = env.action_space
+
+        assert isinstance(observation_space, spaces.Box)
         assert isinstance(action_space, spaces.MultiBinary)
-        
+
         self.action_space = action_space
         
-        self.critic_learning_rate = 1e-1
+        self.critic_learning_rate = 5e-1
         self.actor_learning_rate = 5e-4
-        self.temperature = 0.001
-        
-        self.replay = replay or GameReplay(1000)
-        
-        self.state_transform = T.Compose([
-            T.ToPILImage(),
-            T.Resize((128, 128)),
-            ToNumpy(),
-            Transpose((2, 0, 1))
-        ])
+        self.temperature = 1e-2
+
+        self.observation_transform = transform or transforms.EMPTY
+        self.replay = replay or GameReplay(100)
+        self.report = report or Report()
 
         input_channels = observation_space.shape[-1]
-        self.embedding = ViewEmbedding(input_channels, 128, 16)
-        self.actor = Actor(self.embedding.shape, action_space.shape[0])
-        self.critic = TemporalDifferenceCritic(self.embedding.shape, action_space.shape[0])
+        self.embedding = ImageEmbedding(input_channels, 128, 16)
+        self.actor = Actor(self.embedding.shape[0], action_space.shape[0])
+        self.critic = TemporalDifferenceCritic(self.embedding.shape[0], action_space.shape[0])
 
         self.optimizer = optim.Adam(self.parameters(), lr=self.actor_learning_rate)
+
+        self.reset()
 
     def reset(self):
         self.apply(weight_reset)
         self.replay.reset()
         
     def prepare_state(self, state):
-        view = self.state_transform(state)
+        view = self.observation_transform(state)
         view = view[np.newaxis, :]
         view = torch.from_numpy(view).float().to(self.device)
         
@@ -91,20 +94,26 @@ class ActorCriticAgent(Agent):
         state = self.prepare_state(state)
         
         with torch.no_grad():
-            embedding, _ = self.embedding.forward(state)
+            embedding, feature_map = self.embedding.forward(state)
             action = self.actor.predict(embedding, deterministic)
-            
-        return action.detach().cpu().squeeze().numpy()
+            action = action.detach().cpu().squeeze().numpy()
+
+        self.report.add_images('feature_map', feature_map.unsqueeze(2)[0])
+        self.report.add_scalars('action', {str(i): v for i, v in zip(range(action.shape[0]), action)})
+
+        return action
 
     def update(self, state, action, next_state, reward, is_done: bool = False) -> dict:
-        state = self.state_transform(state)
-        next_state = self.state_transform(next_state)
+        state = self.observation_transform(state)
+        next_state = self.observation_transform(next_state)
         
         self.replay.put(state, reward, action, next_state)
         
         batch_size = 8
         batch = self.replay.batch(batch_size)
         report = self.train_batch(batch)
+
+        self.report.add_scalar('reward', reward)
 
         return report
         
@@ -121,8 +130,8 @@ class ActorCriticAgent(Agent):
         next_action = self.actor.sample(next_embedding)
         
         critic_loss, quality, advantage = self.critic.update(
-            embedding, action, 
-            reward, 
+            embedding, action,
+            reward,
             next_embedding, next_action)
         
         actor_loss, action_probs = self.actor.update(embedding, advantage.detach(), action)
@@ -136,7 +145,7 @@ class ActorCriticAgent(Agent):
         
         self.optimizer.zero_grad()
         loss.backward()
-        nn.utils.clip_grad_norm_(self.parameters(), 0.1)
+        nn.utils.clip_grad_norm_(self.parameters(), 0.5)
         self.optimizer.step()
         
         report = {
@@ -150,5 +159,12 @@ class ActorCriticAgent(Agent):
             'actor_loss': actor_loss.item(),
             'loss': loss.item(),
         }
-        
+
+        self.report.add_scalar('quality', quality.mean().item())
+        self.report.add_scalar('advantage', advantage.mean().item())
+        self.report.add_scalar('critic_loss', critic_loss.item())
+        self.report.add_scalar('actor_loss', actor_loss.item())
+        self.report.add_scalar('entropy_loss', entropy_loss.item())
+        self.report.add_scalar('loss', loss.item())
+
         return report

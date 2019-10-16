@@ -23,15 +23,15 @@ class Actor(nn.Module):
         self.criterion = nn.BCELoss(reduction='none')
         
     def forward(self, embedding):
-        actions_probs = self.transform(embedding)
+        probs = self.transform(embedding)
 
-        return actions_probs
+        return probs
     
     def sample(self, embedding):
         with torch.no_grad():
-            action_probs = self(embedding)
+            probs = self(embedding)
         
-        dist = Bernoulli(action_probs)
+        dist = Bernoulli(probs)
         action = dist.sample().float()
         
         return action
