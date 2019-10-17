@@ -37,6 +37,12 @@ class ActorCriticAgent(Agent):
                  env: gym.Env,
                  transform: transforms.Compose = None,
                  replay: object = None,
+                 batch_size: int = 8,
+                 embedding_capacity: int = 128,
+                 critic_learning_rate: float = 5e-1,
+                 actor_learning_rate: float = 5e-4,
+                 discount_factor: float = 0.95,
+                 temperature: float = 1e-2,
                  report: object = None):
 
         super().__init__()
@@ -48,19 +54,20 @@ class ActorCriticAgent(Agent):
         assert isinstance(action_space, spaces.MultiBinary)
 
         self.action_space = action_space
-        
-        self.critic_learning_rate = 5e-1
-        self.actor_learning_rate = 5e-4
-        self.temperature = 1e-2
+
+        self.batch_size = batch_size
+        self.critic_learning_rate = critic_learning_rate
+        self.actor_learning_rate = actor_learning_rate
+        self.temperature = temperature
 
         self.observation_transform = transform or transforms.EMPTY
         self.replay = replay or GameReplay(100)
         self.report = report or Report()
 
         input_channels = observation_space.shape[-1]
-        self.embedding = ImageEmbedding(input_channels, 128, 16)
+        self.embedding = ImageEmbedding(input_channels, embedding_capacity, 16)
+        self.critic = TemporalDifferenceCritic(self.embedding.shape[0], action_space.shape[0], discount_factor)
         self.actor = Actor(self.embedding.shape[0], action_space.shape[0])
-        self.critic = TemporalDifferenceCritic(self.embedding.shape[0], action_space.shape[0])
 
         self.optimizer = optim.Adam(self.parameters(), lr=self.actor_learning_rate)
 
@@ -96,8 +103,7 @@ class ActorCriticAgent(Agent):
         
         self.replay.put(state, reward, action, next_state)
         
-        batch_size = 8
-        batch = self.replay.batch(batch_size)
+        batch = self.replay.batch(self.batch_size)
         report = self.train_batch(batch)
 
         self.report.add_scalar('reward', reward)

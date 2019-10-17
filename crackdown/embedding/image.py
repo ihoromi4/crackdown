@@ -1,6 +1,6 @@
 import torch.nn as nn
 
-from crackdown.attention.static_mask import StaticMaskAttention
+from ..layers.static_mask import StaticMaskAttention
 
 
 class ImageEmbedding(nn.Module):
@@ -29,8 +29,9 @@ class ImageEmbedding(nn.Module):
             nn.Conv2d(32, output_channels, kernel_size=5, stride=1),
             # nn.FractionalMaxPool2d((2, 2), (feature_map_size, feature_map_size)),
             nn.MaxPool2d(2, 2),
-            nn.Tanh(),
-            nn.ReLU()
+            # nn.Tanh(),
+            # nn.ReLU()
+            # nn.Sigmoid()
         )
         
         self.mask = StaticMaskAttention()
