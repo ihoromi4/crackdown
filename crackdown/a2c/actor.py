@@ -19,44 +19,50 @@ class Actor(nn.Module):
             nn.Sigmoid()
         )
             
-        learning_rate = 1e-4
         self.criterion = nn.BCELoss(reduction='none')
         
-    def forward(self, embedding):
-        probs = self.transform(embedding)
+    def forward(self, embedding: torch.tensor):
+        return self.transform(embedding)
 
-        return probs
-    
-    def sample(self, embedding):
+    def sample(self, embedding: torch.tensor):
         with torch.no_grad():
-            probs = self(embedding)
+            probabilities = self.forward(embedding)
         
-        dist = Bernoulli(probs)
+        dist = Bernoulli(probabilities)
         action = dist.sample().float()
         
         return action
     
-    def simple(self, embedding):
+    def simple(self, embedding: torch.tensor):
         with torch.no_grad():
-            probs = self(embedding)
+            probabilities = self.forward(embedding)
             
-        action = torch.round(probs)
-#         action = (action_probs > 0.5).float()
+        action = torch.round(probabilities)
+#         action = (probabilities > 0.5).float()
         
         return action
+
+    @staticmethod
+    def distribution(probabilities: torch.tensor):
+        return Bernoulli(probabilities)
     
-    def predict(self, embedding, deterministic: bool = False):
+    def predict(self, embedding: torch.tensor, deterministic: bool = False):
         if deterministic:
             return self.simple(embedding)
         else:
             return self.sample(embedding)
     
-    def update(self, embedding, quality, action):
+    def update(self, embedding: torch.tensor, quality: torch.tensor, action: torch.tensor):
         assert len(quality.shape) == 2
+
+        probabilities = self.forward(embedding)
+
+        # 1
+        # loss = self.criterion(probs, action)
+        # loss = torch.mean(loss * quality)
+
+        # 2
+        distribution = self.distribution(probabilities)
+        loss = torch.mean(-distribution.log_prob(action) * quality)
         
-        probs = self.forward(embedding)
-        
-        loss = self.criterion(probs, action)
-        loss = torch.mean(loss * quality)
-        
-        return loss, probs
+        return loss, probabilities

@@ -43,22 +43,26 @@ class ActorCriticAgent(Agent):
                  actor_learning_rate: float = 5e-4,
                  discount_factor: float = 0.95,
                  temperature: float = 1e-2,
+                 start_exploration_steps: int = 1000,
                  report: object = None):
 
         super().__init__()
 
         observation_space = env.observation_space
-        action_space = env.action_space
+        self.action_space = env.action_space
 
-        assert isinstance(observation_space, spaces.Box)
-        assert isinstance(action_space, spaces.MultiBinary)
+        assert isinstance(env.observation_space, spaces.Box)
+        assert isinstance(env.action_space, spaces.MultiBinary)
 
-        self.action_space = action_space
+        self.iteration = 0
+        self.sum_reward = 0
+        self.rolling_reward = 0
 
         self.batch_size = batch_size
         self.critic_learning_rate = critic_learning_rate
         self.actor_learning_rate = actor_learning_rate
         self.temperature = temperature
+        self.start_exploration_steps = start_exploration_steps
 
         self.observation_transform = transform or transforms.EMPTY
         self.replay = replay or GameReplay(100)
@@ -66,8 +70,8 @@ class ActorCriticAgent(Agent):
 
         input_channels = observation_space.shape[-1]
         self.embedding = ImageEmbedding(input_channels, embedding_capacity, 16)
-        self.critic = TemporalDifferenceCritic(self.embedding.shape[0], action_space.shape[0], discount_factor)
-        self.actor = Actor(self.embedding.shape[0], action_space.shape[0])
+        self.critic = TemporalDifferenceCritic(self.embedding.shape[0], self.action_space.shape[0], discount_factor)
+        self.actor = Actor(self.embedding.shape[0], self.action_space.shape[0])
 
         self.optimizer = optim.Adam(self.parameters(), lr=self.actor_learning_rate)
 
@@ -85,6 +89,10 @@ class ActorCriticAgent(Agent):
         return view
         
     def predict(self, state, deterministic: bool = False):
+        if self.start_exploration_steps > 0:
+            self.start_exploration_steps -= 1
+            return self.action_space.sample()
+
         state = self.prepare_state(state)
         
         with torch.no_grad():
@@ -92,8 +100,7 @@ class ActorCriticAgent(Agent):
             action = self.actor.predict(embedding, deterministic)
             action = action.detach().cpu().squeeze().numpy()
 
-        self.report.add_images('feature_map', feature_map.unsqueeze(2)[0])
-        self.report.add_scalars('action', {str(i): v for i, v in zip(range(action.shape[0]), action)})
+        self.report.add_images('feature_map', feature_map.unsqueeze(2)[0], global_step=self.iteration)
 
         return action
 
@@ -106,7 +113,13 @@ class ActorCriticAgent(Agent):
         batch = self.replay.batch(self.batch_size)
         report = self.train_batch(batch)
 
-        self.report.add_scalar('reward', reward)
+        self.sum_reward += reward
+        self.rolling_reward = (1 - 0.1) * self.rolling_reward + 0.1 * reward
+        self.report.add_scalar('reward', reward, global_step=self.iteration)
+        self.report.add_scalar('sum_reward', self.sum_reward, global_step=self.iteration)
+        self.report.add_scalar('rolling_reward', self.rolling_reward, global_step=self.iteration)
+
+        self.iteration += 1
 
         return report
         
@@ -130,7 +143,8 @@ class ActorCriticAgent(Agent):
         actor_loss, action_probs = self.actor.update(embedding, advantage.detach(), action)
         
         # entropy
-        action_entropy = -(torch.log(action_probs) * action_probs).mean()
+        distribution = self.actor.distribution(action_probs)
+        action_entropy = distribution.entropy().mean()
         entropy_loss = -self.temperature * action_entropy
         
         # final loss
@@ -153,11 +167,11 @@ class ActorCriticAgent(Agent):
             'loss': loss.item(),
         }
 
-        self.report.add_scalar('quality', quality.mean().item())
-        self.report.add_scalar('advantage', advantage.mean().item())
-        self.report.add_scalar('critic_loss', critic_loss.item())
-        self.report.add_scalar('actor_loss', actor_loss.item())
-        self.report.add_scalar('entropy_loss', entropy_loss.item())
-        self.report.add_scalar('loss', loss.item())
+        self.report.add_scalar('quality', quality.mean().item(), global_step=self.iteration)
+        self.report.add_scalar('advantage', advantage.mean().item(), global_step=self.iteration)
+        self.report.add_scalar('critic_loss', critic_loss.item(), global_step=self.iteration)
+        self.report.add_scalar('actor_loss', actor_loss.item(), global_step=self.iteration)
+        self.report.add_scalar('action_entropy', action_entropy.item(), global_step=self.iteration)
+        self.report.add_scalar('loss', loss.item(), global_step=self.iteration)
 
         return report
