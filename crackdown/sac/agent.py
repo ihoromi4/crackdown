@@ -44,6 +44,9 @@ class SoftActorCriticAgent(Agent):
         assert isinstance(action_space, spaces.MultiBinary)
 
         self.iteration = 0
+        self.sum_reward = 0
+        self.rolling_reward = 0
+
         self.batch_size = batch_size
         self.actor_learning_rate = actor_learning_rate
         self.critic_learning_rate = critic_learning_rate
@@ -67,6 +70,15 @@ class SoftActorCriticAgent(Agent):
 
         policy_params = list(self.embedding.parameters()) + list(self.policy.parameters())
         self.policy_optimizer = optim.Adam(policy_params, lr=self.actor_learning_rate)
+
+        # self.report.add_hparams({
+        #     'batch_size': self.batch_size,
+        #     'actor_learning_rate': self.actor_learning_rate,
+        #     'critic_learning_rate': self.critic_learning_rate,
+        #     'temperature': self.temperature,
+        #     'polyak': self.polyak,
+        #     'start_exploration_steps': self.start_exploration_steps
+        # })
 
         self.reset()
 
@@ -116,6 +128,12 @@ class SoftActorCriticAgent(Agent):
         batch = self.replay.batch(self.batch_size)
         report = self.train_batch(batch)
 
+        self.sum_reward += reward
+        self.rolling_reward = (1 - 0.1) * self.rolling_reward + 0.1 * reward
+        self.report.add_scalar('reward', reward, global_step=self.iteration)
+        self.report.add_scalar('sum_reward', self.sum_reward, global_step=self.iteration)
+        self.report.add_scalar('rolling_reward', self.rolling_reward, global_step=self.iteration)
+
         self.iteration += 1
 
         return report
@@ -141,7 +159,8 @@ class SoftActorCriticAgent(Agent):
         action = rsample_bernoulli(action_probs)
 
         # entropy
-        action_entropy = -(torch.log(action_probs) * action_probs).mean(dim=-1, keepdim=True)
+        distribution = self.policy.distribution(action_probs)
+        action_entropy = distribution.entropy().mean(dim=-1, keepdim=True)
         entropy = self.temperature * action_entropy
 
         # value network
@@ -188,7 +207,7 @@ class SoftActorCriticAgent(Agent):
         self.report.add_scalar('value_loss', value_loss.mean().item(), global_step=self.iteration)
         self.report.add_scalar('critic_loss', critic_loss.item(), global_step=self.iteration)
         self.report.add_scalar('policy_quality', policy_quality.item(), global_step=self.iteration)
-        self.report.add_scalar('entropy', entropy.mean().item(), global_step=self.iteration)
+        self.report.add_scalar('action_entropy', action_entropy.mean().item(), global_step=self.iteration)
         self.report.add_scalar('loss', loss.item(), global_step=self.iteration)
 
         return report
