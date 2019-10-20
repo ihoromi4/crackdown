@@ -1,3 +1,8 @@
+__all__ = [
+    'Report',
+]
+
+
 class Report:
     def add_scalar(self, *args, **kwargs):
         pass
