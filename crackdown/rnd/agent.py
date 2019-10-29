@@ -66,7 +66,7 @@ class RandomDistillationNetworkAgent(Agent):
         self.start_exploration_steps = start_exploration_steps
 
         self.observation_transform = transform or transforms.EMPTY
-        self.replay = replay or GameReplay(100)
+        self.replay = replay or GameReplay(1000)
         self.report = report or Report()
 
         input_channels = observation_space.shape[-1]
@@ -137,7 +137,7 @@ class RandomDistillationNetworkAgent(Agent):
         
         next_action = self.actor.sample(next_embedding)
 
-        curiosity, rnd_loss = self.rnd.update(next_embedding)
+        curiosity, rnd_loss = self.rnd.update(next_embedding.detach())
 
         critic_loss, quality, advantage = self.critic.update(
             embedding, action,

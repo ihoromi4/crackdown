@@ -14,6 +14,10 @@ class RandomNetworkDistillation(nn.Module):
         assert isinstance(hidden_dim, int)
         assert isinstance(output_dim, int)
 
+        self.epsilon = 1e-8
+        self.rolling_reward_mean = 0
+        self.rolling_reward_std = 0
+
         self.target = nn.Sequential(
             nn.Linear(embedding_dim, hidden_dim),
             nn.ReLU(),
@@ -24,7 +28,9 @@ class RandomNetworkDistillation(nn.Module):
 
         self.predictor = nn.Sequential(
             nn.Linear(embedding_dim, hidden_dim),
+            nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
             nn.Linear(hidden_dim, output_dim),
         )
 
@@ -42,4 +48,11 @@ class RandomNetworkDistillation(nn.Module):
         reward = torch.mean(loss, dim=-1, keepdim=True)
         loss = torch.mean(loss)
 
-        return reward, loss
+        factor = 0.01
+        reward_mean = reward.mean().detach()
+        self.rolling_reward_mean = factor * reward_mean + (1 - factor) * self.rolling_reward_mean
+        self.rolling_reward_std = factor * torch.abs(reward_mean - self.rolling_reward_mean) + (1 - factor) * self.rolling_reward_std
+        scaled_reward = (reward - self.rolling_reward_mean) / (3 * self.rolling_reward_std + self.epsilon)
+        clipped_reward = torch.clamp(scaled_reward, -1, 1)
+
+        return clipped_reward, loss
