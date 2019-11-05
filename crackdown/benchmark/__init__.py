@@ -1,2 +1,2 @@
 from .benchmark import *
-from .direction import *
+from .environments import *

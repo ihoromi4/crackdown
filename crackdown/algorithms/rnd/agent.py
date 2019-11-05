@@ -5,11 +5,11 @@ import torch.optim as optim
 import gym
 from gym import spaces
 
-from ..core.agent import Agent
-from ..core.report import Report
-from ..memory import GameReplay
-from ..embedding.image import ImageEmbedding
-from ..embedding import transforms
+from ...core.agent import Agent
+from ...core.report import Report
+from ...memory import GameReplay
+from ...embedding.image import ImageEmbedding
+from crackdown import transforms
 from ..a2c.actor import Actor
 from ..a2c.critic import TemporalDifferenceCritic
 from .rnd import RandomNetworkDistillation

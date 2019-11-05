@@ -4,14 +4,13 @@ import gym
 from gym import spaces
 import torch
 import torch.optim as optim
-import torch.nn as nn
 
-from ..core.agent import Agent
-from ..core.report import Report
-from ..utils import rsample_bernoulli, polyak_update
-from ..embedding import transforms
-from ..memory import GameReplay
-from ..embedding.image import ImageEmbedding
+from ...core.agent import Agent
+from ...core.report import Report
+from ...utils import rsample_bernoulli, polyak_update
+from crackdown import transforms
+from ...memory import GameReplay
+from ...embedding.image import ImageEmbedding
 from ..a2c.critic import TemporalDifferenceCritic
 from ..a2c.actor import Actor
 

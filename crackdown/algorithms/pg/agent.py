@@ -5,10 +5,10 @@ import torch.optim as optim
 import gym
 from gym import spaces
 
-from ..core.agent import Agent
-from ..core.report import Report
-from ..embedding.image import ImageEmbedding
-from ..embedding import transforms
+from ...core.agent import Agent
+from ...core.report import Report
+from ...embedding.image import ImageEmbedding
+from crackdown import transforms
 from ..a2c.actor import Actor
 from .replay import DiscountReplay
 
@@ -135,7 +135,7 @@ class PolicyGradientAgent(Agent):
         entropy_loss = -self.temperature * action_entropy
         
         # final loss
-        loss = actor_loss + entropy_loss
+        loss = actor_loss  # + entropy_loss
         
         self.optimizer.zero_grad()
         loss.backward()
