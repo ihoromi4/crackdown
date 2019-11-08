@@ -29,9 +29,8 @@ class Trainer:
         rewards = []
         step_i = 0
 
-        env.reset()
+        state = env.reset()
         action = env.action_space.sample()
-        state = env.render()
 
         for step_i in itertools.count(1):
             print('Step:', step_i)

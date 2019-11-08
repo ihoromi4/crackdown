@@ -6,7 +6,7 @@ __all__ = [
 ]
 
 
-def get_basis(width, height, device='cpu'):
+def get_basis(height, width, device='cpu'):
     w = torch.linspace(-1, 1, width)
     x = torch.stack([w] * height, dim=0).to(device)
     
