@@ -7,7 +7,7 @@ from gym import spaces
 
 from ...core.agent import Agent
 from ...core.report import Report
-from ...memory import GameReplay
+from ...memory import TensorBuffer
 from ...embedding.image import ImageEmbedding
 from crackdown import transforms
 from .actor import Actor
@@ -64,7 +64,7 @@ class ActorCriticAgent(Agent):
         self.start_exploration_steps = start_exploration_steps
 
         self.observation_transform = transform or transforms.EMPTY
-        self.replay = replay or GameReplay(100)
+        self.replay = replay or TensorBuffer(1000)
         self.report = report or Report()
 
         input_channels = observation_space.shape[-1]
@@ -80,22 +80,14 @@ class ActorCriticAgent(Agent):
         self.apply(weight_reset)
         self.replay.reset()
         
-    def prepare_state(self, state):
-        view = self.observation_transform(state)
-        view = view[np.newaxis, :]
-        view = torch.from_numpy(view).float().to(self.device)
-        
-        return view
-        
     def predict(self, state, deterministic: bool = False):
         exploration_threshold = self.iteration / self.start_exploration_steps
         if np.random.random() > exploration_threshold:
             return self.actor.head.random().squeeze(dim=0).numpy()
 
-        state = self.prepare_state(state)
-        
         with torch.no_grad():
-            embedding, feature_map = self.embedding.forward(state)
+            state = self.observation_transform(state)
+            embedding, feature_map = self.embedding.forward(state.unsqueeze(0))
             action = self.actor.predict(embedding, deterministic)
             action = action.detach().cpu().squeeze(dim=0).numpy()
 
@@ -110,10 +102,12 @@ class ActorCriticAgent(Agent):
         reward = np.array(reward)
 
         state = self.observation_transform(state)
-        next_state = self.observation_transform(next_state)
-        
-        self.replay.put(state, reward, action, next_state)
-        
+
+        self.replay.put(state, torch.from_numpy(action), float(reward), bool(is_done))
+
+        if len(self.replay) < self.batch_size:
+            return {}
+
         batch = self.replay.batch(self.batch_size)
         report = self.train_batch(batch)
 
@@ -128,11 +122,7 @@ class ActorCriticAgent(Agent):
         return report
         
     def train_batch(self, batch: list) -> dict:
-        if isinstance(batch[0], np.ndarray):
-            batch = [torch.from_numpy(v).float().to(self.device) for v in batch]
-            
-        state, reward, action, next_state = batch
-        reward = reward.view(-1, 1)
+        state, action, next_state, reward = batch
 
         embedding, signal = self.embedding.forward(state)
         next_embedding, next_signal = self.embedding.forward(next_state)

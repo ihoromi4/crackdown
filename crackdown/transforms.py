@@ -2,6 +2,7 @@ import numpy as np
 from torchvision.transforms import *
 
 __all__ = [
+    'ToTensor',
     'ToNumpy',
     'Transpose',
     'Scale',
@@ -68,10 +69,7 @@ class MaxPooling:
         return arr.reshape(width // max_pool, max_pool, height // max_pool, max_pool, -1).max(axis=(1, 3))
 
 
-EMPTY = transforms.Compose([
-    Transpose((2, 0, 1)),
-    Scale(),
-])
+EMPTY = ToTensor()
 
 
 def downscale(shape: tuple, factor: float = 0.5):
