@@ -52,7 +52,6 @@ class ActorCriticAgent(Agent):
         self.action_space = env.action_space
 
         assert isinstance(env.observation_space, spaces.Box)
-        assert isinstance(env.action_space, spaces.MultiBinary)
 
         self.iteration = 0
         self.sum_reward = 0
@@ -70,8 +69,8 @@ class ActorCriticAgent(Agent):
 
         input_channels = observation_space.shape[-1]
         self.embedding = ImageEmbedding(input_channels, embedding_capacity, 16)
-        self.critic = TemporalDifferenceCritic(self.embedding.shape[0], self.action_space.shape[0], discount_factor)
-        self.actor = Actor(self.embedding.shape[0], self.action_space.shape[0])
+        self.actor = Actor(self.embedding.shape[0], self.action_space)
+        self.critic = TemporalDifferenceCritic(self.embedding.shape[0], self.actor.output_shape[-1], discount_factor)
 
         self.optimizer = optim.Adam(self.parameters(), lr=self.actor_learning_rate)
 
@@ -143,7 +142,7 @@ class ActorCriticAgent(Agent):
         actor_loss, action_probs = self.actor.update(embedding, advantage.detach(), action)
         
         # entropy
-        distribution = self.actor.distribution(action_probs)
+        distribution = self.actor.distribution(embedding)
         action_entropy = distribution.entropy().mean()
         entropy_loss = -self.temperature * action_entropy
         

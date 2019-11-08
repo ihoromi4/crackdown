@@ -40,7 +40,6 @@ class SoftActorCriticAgent(Agent):
         self.action_space = action_space = env.action_space
 
         assert isinstance(observation_space, spaces.Box)
-        assert isinstance(action_space, spaces.MultiBinary)
 
         self.iteration = 0
         self.sum_reward = 0
@@ -59,11 +58,11 @@ class SoftActorCriticAgent(Agent):
 
         input_channels = observation_space.shape[-1]
         self.embedding = ImageEmbedding(input_channels, embedding_capacity, 16)
-        self.quality_network_1 = TemporalDifferenceCritic(self.embedding.shape[0], action_space.shape[0], discount_factor)
-        self.quality_network_2 = TemporalDifferenceCritic(self.embedding.shape[0], action_space.shape[0], discount_factor)
+        self.policy = Actor(self.embedding.shape[0], action_space)
+        self.quality_network_1 = TemporalDifferenceCritic(self.embedding.shape[0], self.policy.input_shape[-1], discount_factor)
+        self.quality_network_2 = TemporalDifferenceCritic(self.embedding.shape[0], self.policy.input_shape[-1], discount_factor)
         self.value_network = TemporalDifferenceCritic(self.embedding.shape[0], 0, discount_factor)
         self.target_value_network = copy.deepcopy(self.value_network)
-        self.policy = Actor(self.embedding.shape[0], action_space.shape[0])
 
         self.critic_optimizer = optim.Adam(self.parameters(), lr=self.critic_learning_rate)
 
