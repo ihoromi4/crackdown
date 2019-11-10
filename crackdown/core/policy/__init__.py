@@ -15,7 +15,7 @@ __all__ = [
 
 def make_action_head(action_space) -> nn.Module:
     if isinstance(action_space, spaces.MultiBinary):
-        return MultiBinaryPolicyHead(1, action_space)
+        return MultiBinaryPolicyHead(action_space)
 
     if isinstance(action_space, spaces.Discrete):
         return DiscretePolicyHead(action_space)

@@ -22,7 +22,9 @@ class TemporalDifferenceCritic(nn.Module):
         
     def forward(self, embedding: torch.tensor, action: torch.tensor = None):
         if action is None:
-            action = torch.zeros((embedding.shape[0], self.action_dim))
+            action = torch.zeros((embedding.shape[0], self.action_dim), dtype=torch.float32)
+        else:
+            action = action.float()
 
         x = torch.cat([embedding, action], dim=-1)
         quality = self.transform(x)

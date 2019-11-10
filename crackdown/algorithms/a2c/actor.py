@@ -14,7 +14,7 @@ class Actor(nn.Module):
         self.action_space = action_space
 
         self.head = make_action_head(action_space)
-        self.transform = nn.Sequential(
+        self.net = nn.Sequential(
             nn.Linear(embedding_dim, 128, bias=True),
             nn.ReLU(),
             nn.Linear(128, 64, bias=True),
@@ -26,40 +26,30 @@ class Actor(nn.Module):
 
     @property
     def output_shape(self):
-        return self.head.input_shape
+        return self.head.output_shape
 
     def forward(self, embedding: torch.tensor):
-        x = self.transform(embedding)
+        x = self.net(embedding)
         return self.head(x)
 
-    def sample(self, embedding: torch.tensor):
+    def sample(self, embedding: torch.tensor, deterministic: bool = False):
         with torch.no_grad():
-            x = self.transform(embedding)
-            action = self.head.sample(x).float()
+            x = self.net(embedding)
+            action = self.head.sample(x, deterministic)
         
         return action
     
-    def simple(self, embedding: torch.tensor):
-        with torch.no_grad():
-            x = self.transform(embedding)
-            action = self.head.simple(x).float()
-            
-        return action
-
     def distribution(self, embedding: torch.tensor):
-        x = self.transform(embedding)
+        x = self.net(embedding)
         return self.head.distribution(x)
     
     def predict(self, embedding: torch.tensor, deterministic: bool = False):
-        if deterministic:
-            return self.simple(embedding)
-        else:
-            return self.sample(embedding)
+        return self.sample(embedding, deterministic)
     
     def update(self, embedding: torch.tensor, quality: torch.tensor, action: torch.tensor):
         assert len(quality.shape) == 2
 
-        x = self.transform(embedding)
+        x = self.net(embedding)
         probabilities = self.head(x)
         distribution = self.head.distribution(x)
 

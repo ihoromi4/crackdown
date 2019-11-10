@@ -90,14 +90,14 @@ class ActorCriticAgent(Agent):
     def predict(self, state, deterministic: bool = False):
         if self.start_exploration_steps > 0:
             self.start_exploration_steps -= 1
-            return self.action_space.sample()
+            return self.actor.head.random().squeeze(dim=0).numpy()
 
         state = self.prepare_state(state)
         
         with torch.no_grad():
             embedding, feature_map = self.embedding.forward(state)
             action = self.actor.predict(embedding, deterministic)
-            action = action.detach().cpu().squeeze().numpy()
+            action = action.detach().cpu().squeeze(dim=0).numpy()
 
         self.report.add_images('feature_map', feature_map.unsqueeze(2)[0], global_step=self.iteration)
 
