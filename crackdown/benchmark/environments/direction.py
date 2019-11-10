@@ -57,7 +57,7 @@ class DirectionEnvironment(gym.Env):
         return true.flatten()
 
     def reset(self):
-        pass
+        return self._get_observation()
 
     def render(self, mode='human', close=False):
         return self._get_observation()

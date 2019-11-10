@@ -30,11 +30,12 @@ class Trainer:
         step_i = 0
 
         state = env.reset()
-        action = env.action_space.sample()
+        action = self.agent.predict(state)
 
         for step_i in itertools.count(1):
             print('Step:', step_i)
             next_state, reward, done, info = env.step(action)
+            env.render()
 
             rewards.append(reward)
 
