@@ -53,5 +53,4 @@ class MultiBinaryPolicyHead(nn.Module):
 
     def random(self, n_samples: int = 1) -> torch.Tensor:
         actions = [self.action_space.sample() for _ in range(n_samples)]
-        actions = [torch.tensor(a) for a in actions]
-        return torch.tensor(actions).view((n_samples, 1))
+        return torch.tensor(actions)

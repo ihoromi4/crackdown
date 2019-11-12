@@ -1,5 +1,6 @@
-import torch
 import torch.nn as nn
+
+from ..layers.static_mask import StaticMaskAttention
 
 
 class ImageEmbedding(nn.Module):
@@ -20,19 +21,27 @@ class ImageEmbedding(nn.Module):
             nn.ReLU(),
             nn.MaxPool2d(2, 2),
             # conv block
-            nn.Conv2d(16, output_channels, kernel_size=5, stride=1),
+            nn.Conv2d(16, 32, kernel_size=5, stride=1),
+            nn.BatchNorm2d(32),
             nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+            # conv block
+            nn.Conv2d(32, output_channels, kernel_size=5, stride=1),
+            # nn.FractionalMaxPool2d((2, 2), (feature_map_size, feature_map_size)),
+            nn.MaxPool2d(2, 2),
+            # nn.Tanh(),
+            # nn.ReLU()
+            # nn.Sigmoid()
         )
-
-        self.fraction = nn.FractionalMaxPool2d((2, 2), (feature_map_size, feature_map_size))
+        
+        self.mask = StaticMaskAttention()
         
     @property
-    def output_shape(self):
-        return torch.Size([-1, self.output_channels * self.feature_map_size ** 2])
+    def shape(self):
+        return [self.output_channels * self.mask.n_masks]
         
     def forward(self, state):
-        x = self.cnn(state)
-        feature_map = self.fraction(x)
-        masked = feature_map.view((feature_map.shape[0], -1))
-
+        feature_map = self.cnn(state)
+        masked = self.mask(feature_map)
+        
         return masked, feature_map

@@ -39,8 +39,8 @@ class ActorCriticAgent(Agent):
                  replay: object = None,
                  batch_size: int = 8,
                  embedding_capacity: int = 128,
-                 critic_learning_rate: float = 5e-1,
-                 actor_learning_rate: float = 5e-4,
+                 critic_learning_rate: float = 1e-3,
+                 actor_learning_rate: float = 1e-4,
                  discount_factor: float = 0.95,
                  temperature: float = 1e-2,
                  start_exploration_steps: int = 1000,
@@ -69,8 +69,8 @@ class ActorCriticAgent(Agent):
 
         input_channels = observation_space.shape[-1]
         self.embedding = ImageEmbedding(input_channels, embedding_capacity, 16)
-        self.actor = Actor(self.embedding.shape[0], self.action_space)
-        self.critic = TemporalDifferenceCritic(self.embedding.shape[0], self.actor.output_shape[-1], discount_factor)
+        self.actor = Actor(self.embedding.output_shape[-1], self.action_space)
+        self.critic = TemporalDifferenceCritic(self.embedding.output_shape[-1], self.actor.output_shape[-1], discount_factor)
 
         self.optimizer = optim.Adam(self.parameters(), lr=self.actor_learning_rate)
 
@@ -104,6 +104,11 @@ class ActorCriticAgent(Agent):
         return action
 
     def update(self, state, action, next_state, reward, is_done: bool = False) -> dict:
+        state = np.array(state)
+        action = np.array(action)
+        next_state = np.array(next_state)
+        reward = np.array(reward)
+
         state = self.observation_transform(state)
         next_state = self.observation_transform(next_state)
         
@@ -133,21 +138,23 @@ class ActorCriticAgent(Agent):
         next_embedding, next_signal = self.embedding.forward(next_state)
         
         next_action = self.actor.sample(next_embedding)
-        
-        critic_loss, quality, advantage = self.critic.update(
-            embedding, action,
-            reward,
-            next_embedding, next_action)
-        
-        actor_loss, action_probs = self.actor.update(embedding, advantage.detach(), action)
-        
+
         # entropy
         distribution = self.actor.distribution(embedding)
         action_entropy = distribution.entropy().mean()
         entropy_loss = -self.temperature * action_entropy
+        entropy_reward = torch.clamp(action_entropy, 0, 1)
         
+        critic_loss, quality, advantage = self.critic.update(
+            embedding, action,
+            reward + entropy_reward.detach(),
+            next_embedding, next_action)
+        
+        actor_loss, action_probs = self.actor.update(embedding, advantage.detach(), action)
+
         # final loss
-        loss = self.critic_learning_rate * critic_loss + actor_loss + entropy_loss
+        critic_loss_factor = self.critic_learning_rate / self.actor_learning_rate
+        loss = critic_loss_factor * critic_loss + actor_loss  # + entropy_loss
         
         self.optimizer.zero_grad()
         loss.backward()

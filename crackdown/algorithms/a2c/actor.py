@@ -1,7 +1,6 @@
 import gym
 import torch
 import torch.nn as nn
-from torch.distributions import Bernoulli
 
 from ...core.policy import make_action_head
 
@@ -15,9 +14,7 @@ class Actor(nn.Module):
 
         self.head = make_action_head(action_space)
         self.net = nn.Sequential(
-            nn.Linear(embedding_dim, 128, bias=True),
-            nn.ReLU(),
-            nn.Linear(128, 64, bias=True),
+            nn.Linear(embedding_dim, 64, bias=True),
             nn.ReLU(),
             nn.Linear(64, self.head.input_shape[-1], bias=True),
         )

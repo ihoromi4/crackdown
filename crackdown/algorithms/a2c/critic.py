@@ -11,11 +11,9 @@ class TemporalDifferenceCritic(nn.Module):
         self.discount_factor = discount_factor
         
         self.transform = nn.Sequential(
-            nn.Linear(embedding_dim + action_dim, 128, bias=True),
+            nn.Linear(embedding_dim + action_dim, 64, bias=True),
             nn.ReLU(),
-            nn.Linear(128, 128, bias=True),
-            nn.ReLU(),
-            nn.Linear(128, 1, bias=True)
+            nn.Linear(64, 1, bias=True)
         )
             
         self.criterion = nn.MSELoss()
