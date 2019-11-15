@@ -85,9 +85,9 @@ class PolicyGradientAgent(Agent):
         return view
         
     def predict(self, state, deterministic: bool = False):
-        if self.start_exploration_steps > 0:
-            self.start_exploration_steps -= 1
-            return self.action_space.sample()
+        exploration_threshold = self.iteration / self.start_exploration_steps
+        if np.random.random() > exploration_threshold:
+            return self.actor.head.random().squeeze(dim=0).numpy()
 
         state = self.prepare_state(state)
         
