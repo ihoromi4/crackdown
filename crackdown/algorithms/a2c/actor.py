@@ -25,25 +25,25 @@ class Actor(nn.Module):
     def output_shape(self):
         return self.head.output_shape
 
-    def forward(self, embedding: torch.tensor):
+    def forward(self, embedding: torch.Tensor):
         x = self.net(embedding)
         return self.head(x)
 
-    def sample(self, embedding: torch.tensor, deterministic: bool = False):
+    def sample(self, embedding: torch.Tensor, deterministic: bool = False):
         with torch.no_grad():
             x = self.net(embedding)
             action = self.head.sample(x, deterministic)
         
         return action
     
-    def distribution(self, embedding: torch.tensor):
+    def distribution(self, embedding: torch.Tensor):
         x = self.net(embedding)
         return self.head.distribution(x)
     
-    def predict(self, embedding: torch.tensor, deterministic: bool = False):
+    def predict(self, embedding: torch.Tensor, deterministic: bool = False):
         return self.sample(embedding, deterministic)
     
-    def update(self, embedding: torch.tensor, quality: torch.tensor, action: torch.tensor):
+    def update(self, embedding: torch.Tensor, quality: torch.Tensor, action: torch.Tensor):
         assert len(quality.shape) == 2
 
         x = self.net(embedding)

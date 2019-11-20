@@ -11,7 +11,7 @@ from ...memory import TensorBuffer
 from ...embedding.image import ImageEmbedding
 from crackdown import transforms
 from .actor import Actor
-from .critic import TemporalDifferenceCritic
+from .advantage_critic import AdvantageCritic
 
 
 __all__ = [
@@ -38,6 +38,7 @@ class ActorCriticAgent(Agent):
                  transform: transforms.Compose = None,
                  replay: object = None,
                  batch_size: int = 8,
+                 update_period: int = 1,
                  embedding_capacity: int = 128,
                  critic_learning_rate: float = 1e-3,
                  actor_learning_rate: float = 1e-4,
@@ -58,6 +59,7 @@ class ActorCriticAgent(Agent):
         self.rolling_reward = 0
 
         self.batch_size = batch_size
+        self.update_period = update_period
         self.critic_learning_rate = critic_learning_rate
         self.actor_learning_rate = actor_learning_rate
         self.temperature = temperature
@@ -70,9 +72,9 @@ class ActorCriticAgent(Agent):
         input_channels = observation_space.shape[-1]
         self.embedding = ImageEmbedding(input_channels, embedding_capacity, 16)
         self.actor = Actor(self.embedding.output_shape[-1], self.action_space)
-        self.critic = TemporalDifferenceCritic(self.embedding.output_shape[-1], self.actor.output_shape[-1], discount_factor)
+        self.critic = AdvantageCritic(self.embedding.output_shape[-1], self.actor.output_shape[-1], discount_factor)
 
-        self.optimizer = optim.Adam(self.parameters(), lr=self.actor_learning_rate)
+        self.optimizer = optim.Adam(self.parameters(), lr=self.actor_learning_rate, weight_decay=0)
 
         self.reset()
 
@@ -108,8 +110,11 @@ class ActorCriticAgent(Agent):
         if len(self.replay) < self.batch_size:
             return {}
 
-        batch = self.replay.batch(self.batch_size)
-        report = self.train_batch(batch)
+        if self.iteration % self.update_period == self.update_period - 1:
+            batch = self.replay.batch(self.batch_size)
+            report = self.train_batch(batch)
+        else:
+            report = {}
 
         self.sum_reward += reward
         self.rolling_reward = (1 - 0.1) * self.rolling_reward + 0.1 * reward
@@ -130,16 +135,13 @@ class ActorCriticAgent(Agent):
         next_action = self.actor.sample(next_embedding)
 
         # entropy
-        distribution = self.actor.distribution(embedding)
+        distribution = self.actor.distribution(next_embedding)
         action_entropy = distribution.entropy().mean()
-        entropy_loss = -self.temperature * action_entropy
-        entropy_reward = torch.clamp(action_entropy, 0, 1)
-        
-        critic_loss, quality, advantage = self.critic.update(
-            embedding, action,
-            reward + entropy_reward.detach(),
-            next_embedding, next_action)
-        
+        # entropy_loss = -self.temperature * action_entropy
+        entropy_reward = torch.clamp(self.temperature * action_entropy, 0, 1)
+
+        reward = reward + entropy_reward.detach()
+        critic_loss, advantage = self.critic.update(embedding, action, reward, next_embedding, next_action)
         actor_loss, action_probs = self.actor.update(embedding, advantage.detach(), action)
 
         # final loss
@@ -156,14 +158,14 @@ class ActorCriticAgent(Agent):
             'next_embedding': next_embedding,
             'signal': signal,
             'next_signal': next_signal,
-            'quality': quality.mean().item(),
+            # 'quality': quality.mean().item(),
             'advantage': advantage.mean().item(),
             'critic_loss': critic_loss.item(),
             'actor_loss': actor_loss.item(),
             'loss': loss.item(),
         }
 
-        self.report.add_scalar('quality', quality.mean().item(), global_step=self.iteration)
+        # self.report.add_scalar('quality', quality.mean().item(), global_step=self.iteration)
         self.report.add_scalar('advantage', advantage.mean().item(), global_step=self.iteration)
         self.report.add_scalar('critic_loss', critic_loss.item(), global_step=self.iteration)
         self.report.add_scalar('actor_loss', actor_loss.item(), global_step=self.iteration)
