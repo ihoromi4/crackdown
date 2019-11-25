@@ -10,10 +10,22 @@ __all__ = [
 class DirectionEnvironment(gym.Env):
     metadata = {'render.modes': ['human'], 'video.frames_per_second': 30}
     observation_space = spaces.Box(low=0, high=255, shape=(64, 64, 1), dtype=np.uint8)
-    action_space = spaces.MultiBinary(4)
+    # center, left, right, up, down, + 4 combinations
+    action_space = spaces.Discrete(9)
     reward_range = (-1, 1)
+    action_map = {
+        0: [0, 0],
+        1: [1, 0],
+        2: [-1, 0],
+        3: [0, 1],
+        4: [0, -1],
+        5: [1, 1],
+        6: [1, -1],
+        7: [-1, 1],
+        8: [-1, -1],
+    }
 
-    def __init__(self, size: tuple = (64, 64), point_size: int = 10, position_noise_std: float = 0.33):
+    def __init__(self, size: tuple = (64, 64), point_size: int = 10, position_noise_std: float = 0.0):
         assert isinstance(size, (tuple, list))
         assert len(size) == 2
 
@@ -40,21 +52,15 @@ class DirectionEnvironment(gym.Env):
 
         return frame
 
-    def _get_reward(self, action):
-        action = np.clip(action, 0, 1)
-        template = np.array([[1, 0], [0, 0], [0, 1]])
-        true = template[self.direction + 1]
-
-        matrix = np.array(action).reshape((2, 2))
-        cond = (matrix == true)
-        return np.all(cond) * 2 - 1
+    def _get_reward(self, action: int):
+        action = self.action_map[action]
+        return np.all(np.equal(action, self.direction)) * 2 - 1
 
     @property
     def optimal_action(self):
-        template = np.array([[1, 0], [0, 0], [0, 1]])
-        true = template[self.direction + 1]
-
-        return true.flatten()
+        for i, action in enumerate(self.action_map.values()):
+            if np.all(np.equal(action, self.direction)):
+                return i
 
     def reset(self):
         return self._get_observation()
@@ -62,8 +68,10 @@ class DirectionEnvironment(gym.Env):
     def render(self, mode='human', close=False):
         return self._get_observation()
 
-    def step(self, action):
-        action = np.clip(action, 0, 1)
+    def step(self, action: int):
+        action = int(action)
+        assert 0 <= action < 9
+
         reward = self._get_reward(action)
 
         self._step()
