@@ -1,3 +1,4 @@
+from typing import Union
 import numpy as np
 import torch
 import torch.nn as nn
@@ -11,12 +12,18 @@ from ...memory import TensorBuffer
 from ...embedding.image import ImageEmbedding
 from crackdown import transforms
 from .actor import Actor
+from .critic import TemporalDifferenceCritic
 from .advantage_critic import AdvantageCritic
 
 
 __all__ = [
     'ActorCriticAgent',
 ]
+
+CRITIC_CLASSES = (
+    TemporalDifferenceCritic,
+    AdvantageCritic,
+)
 
 
 def weights_init(m):
@@ -37,6 +44,7 @@ class ActorCriticAgent(Agent):
                  env: gym.Env,
                  transform: transforms.Compose = None,
                  replay: object = None,
+                 critic: Union[CRITIC_CLASSES] = TemporalDifferenceCritic,
                  batch_size: int = 8,
                  update_period: int = 1,
                  embedding_capacity: int = 128,
@@ -44,15 +52,16 @@ class ActorCriticAgent(Agent):
                  actor_learning_rate: float = 1e-4,
                  discount_factor: float = 0.95,
                  temperature: float = 1e-2,
+                 clip_gradient: float = 1.0,
                  start_exploration_steps: int = 1000,
                  report: object = None):
 
         super().__init__()
 
-        observation_space = env.observation_space
-        self.action_space = env.action_space
-
         assert isinstance(env.observation_space, spaces.Box)
+
+        self.observation_space = env.observation_space
+        self.action_space = env.action_space
 
         self.iteration = 0
         self.sum_reward = 0
@@ -63,16 +72,23 @@ class ActorCriticAgent(Agent):
         self.critic_learning_rate = critic_learning_rate
         self.actor_learning_rate = actor_learning_rate
         self.temperature = temperature
+        self.clip_gradient = clip_gradient
         self.start_exploration_steps = start_exploration_steps
 
         self.observation_transform = transform or transforms.EMPTY
-        self.replay = replay or TensorBuffer(1000)
         self.report = report or Report()
 
-        input_channels = observation_space.shape[-1]
-        self.embedding = ImageEmbedding(input_channels, embedding_capacity, 16)
+        self.embedding = ImageEmbedding(env.observation_space.shape[-1], embedding_capacity, 16)
         self.actor = Actor(self.embedding.output_shape[-1], self.action_space)
-        self.critic = AdvantageCritic(self.embedding.output_shape[-1], self.actor.output_shape[-1], discount_factor)
+        self.critic = critic(self.embedding.output_shape[-1], self.actor.output_shape[-1], discount_factor)
+
+        buffer_template = (
+            ('state', (env.observation_space.shape[-1],) + env.observation_space.shape[:-1], torch.float32),
+            ('action', (self.actor.output_shape[-1],), torch.float32),
+            ('reward', (1,), torch.float32),
+            ('done', (1,), torch.float32),
+        )
+        self.replay = replay or TensorBuffer(1000, buffer_template)
 
         self.optimizer = optim.Adam(self.parameters(), lr=self.actor_learning_rate, weight_decay=0)
 
@@ -103,9 +119,10 @@ class ActorCriticAgent(Agent):
         next_state = np.array(next_state)
         reward = np.array(reward)
 
-        state = self.observation_transform(state)
+        # state = self.observation_transform(state)
+        next_state = self.observation_transform(next_state)
 
-        self.replay.put(state, torch.from_numpy(action), float(reward), bool(is_done))
+        self.replay.put(next_state, torch.from_numpy(action), float(reward), bool(is_done))
 
         if len(self.replay) < self.batch_size:
             return {}
@@ -150,7 +167,7 @@ class ActorCriticAgent(Agent):
         
         self.optimizer.zero_grad()
         loss.backward()
-        nn.utils.clip_grad_norm_(self.parameters(), 0.5)
+        nn.utils.clip_grad_norm_(self.parameters(), self.clip_gradient)
         self.optimizer.step()
         
         report = {

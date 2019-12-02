@@ -17,13 +17,13 @@ class AdvantageCritic(nn.Module):
         
         self.state_value_net = nn.Sequential(
             nn.Linear(embedding_dim, 64, bias=True),
-            nn.ReLU(),
+            nn.Softplus(),
             nn.Linear(64, 1, bias=True)
         )
 
         self.action_value_net = nn.Sequential(
             nn.Linear(embedding_dim + action_dim, 64, bias=True),
-            nn.ReLU(),
+            nn.Softplus(),
             nn.Linear(64, 1, bias=True)
         )
             
@@ -46,7 +46,7 @@ class AdvantageCritic(nn.Module):
             true_state_value = reward + self.discount_factor * next_state_value
             true_action_value = reward + self.discount_factor * next_action_value
 
-            advantage = action_value - state_value
+            advantage = true_action_value - state_value
 
         state_value_loss = self.criterion(state_value, true_state_value)
         action_value_loss = self.criterion(action_value, true_action_value)

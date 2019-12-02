@@ -33,7 +33,6 @@ class Trainer:
         action = self.agent.predict(state)
 
         for step_i in itertools.count(1):
-            print('Step:', step_i)
             next_state, reward, done, info = env.step(action)
             env.render()
 

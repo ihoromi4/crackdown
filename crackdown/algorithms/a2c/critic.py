@@ -1,3 +1,4 @@
+from typing import Union
 import torch
 import torch.nn as nn
 
@@ -12,7 +13,7 @@ class TemporalDifferenceCritic(nn.Module):
         
         self.transform = nn.Sequential(
             nn.Linear(embedding_dim + action_dim, 64, bias=True),
-            nn.ReLU(),
+            nn.Softplus(),
             nn.Linear(64, 1, bias=True)
         )
             
@@ -29,7 +30,7 @@ class TemporalDifferenceCritic(nn.Module):
         
         return quality
     
-    def update(self, embedding, action, reward: float, next_embedding, next_action, next_quality=None):
+    def update(self, embedding, action, reward: Union[float, torch.Tensor], next_embedding, next_action, next_quality=None):
         quality = self.forward(embedding, action)
 
         if next_quality is None:
@@ -42,7 +43,7 @@ class TemporalDifferenceCritic(nn.Module):
         
         loss = self.criterion(true_quality, quality)
         
-        return loss, true_quality, advantage
+        return loss, advantage
     
     def fit(self, embedding, action, true_quality):
         quality = self.forward(embedding, action)
