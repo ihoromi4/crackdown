@@ -1,4 +1,4 @@
-from collections import OrderedDict
+from typing import Union
 import numpy as np
 import torch
 import torch.nn as nn
@@ -27,14 +27,18 @@ class TensorBuffer(nn.Module):
                  buffer_template: tuple = BUFFER_TEMPLATE,
                  batch_template: tuple = BATCH_TEMPLATE):
 
+        assert isinstance(size, int), "expected size type is int, got %s" % type(size)
+        assert isinstance(buffer_template, tuple), "expected buffer_template type is tuple, got %s" % type(buffer_template)
+        assert isinstance(batch_template, tuple), "expected batch_template type is tuple, got %s" % type(batch_template)
+
         super().__init__()
 
         self.size = size
-        self.index = 0
-
         self.buffer_template = buffer_template
         self.batch_template = batch_template
-        self.buffer = None
+
+        self.index = 0
+        self.buffer = nn.ParameterDict({})
 
         self.initialize_buffer()
 
@@ -43,6 +47,15 @@ class TensorBuffer(nn.Module):
             name: nn.Parameter(torch.zeros((self.size,) + shape, dtype=dtype), False) for
             name, shape, dtype in self.buffer_template
         })
+
+    def add_buffer(self, name: str, shape: Union[tuple, torch.Size], dtype: torch.dtype = torch.float32):
+        assert isinstance(name, str), "expected name type is str, got %s" % type(name)
+        assert isinstance(shape, (tuple, torch.Size)), "expected shape type is tuple or torch.Size, got %s" % type(shape)
+        assert isinstance(dtype, torch.dtype), 'expected dtype type is torch.dtype, got %s' % type(dtype)
+
+        tensor = torch.zeros((self.size,) + shape, dtype=dtype)
+        self.buffer[name] = nn.Parameter(tensor)
+        self.buffer_template += (name, shape, dtype)
 
     def reset(self):
         self.index = 0
@@ -60,8 +73,8 @@ class TensorBuffer(nn.Module):
         return self.index
 
     def __getattr__(self, key):
-        if ('buffer' in self.__dict__) and (key in self.buffer):
-            return self.buffer[key][:self.index]
+        if key in super().__getattr__('buffer'):
+            return super().__getattr__('buffer')[key][:self.index]
 
         return super().__getattr__(key)
 
@@ -77,7 +90,7 @@ class TensorBuffer(nn.Module):
         if self.index >= self.size:
             self.rolling()
 
-    def batch(self, size: int, template: list = None):
+    def batch(self, size: int, template: tuple = None):
         template = template or self.batch_template
 
         min_ = np.take(template, 1, -1).astype(int).min()
