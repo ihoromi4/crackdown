@@ -1,4 +1,4 @@
-from distutils.core import setup
+from setuptools import setup, find_packages
 
 setup(
     name='Crackdown',
@@ -7,7 +7,7 @@ setup(
     author='Ihor Omelchenko',
     author_email='counter3d@gmail.com',
     license='MIT',
-    packages=['crackdown'],
+    packages=find_packages(exclude=["docs", "tests", "examples"]),
     install_requires=[
         'numpy',
         'torch',
