@@ -85,10 +85,11 @@ class ActorCriticAgent(Agent):
         buffer_template = (
             ('state', (env.observation_space.shape[-1],) + env.observation_space.shape[:-1], torch.float32),
             ('action', (self.actor.output_shape[-1],), torch.float32),
+            ('next_state', (env.observation_space.shape[-1],) + env.observation_space.shape[:-1], torch.float32),
             ('reward', (1,), torch.float32),
             ('done', (1,), torch.float32),
         )
-        self.replay = replay or TensorBuffer(1000, buffer_template)
+        self.replay = replay or TensorBuffer(10, buffer_template)
 
         self.optimizer = optim.Adam(self.parameters(), lr=self.actor_learning_rate, weight_decay=0)
 
@@ -119,10 +120,10 @@ class ActorCriticAgent(Agent):
         next_state = np.array(next_state)
         reward = np.array(reward)
 
-        # state = self.observation_transform(state)
+        state = self.observation_transform(state)
         next_state = self.observation_transform(next_state)
 
-        self.replay.put(next_state, torch.from_numpy(action), float(reward), bool(is_done))
+        self.replay.put(state, torch.from_numpy(action), next_state, float(reward), bool(is_done))
 
         if len(self.replay) < self.batch_size:
             return {}
@@ -144,7 +145,7 @@ class ActorCriticAgent(Agent):
         return report
         
     def train_batch(self, batch: list) -> dict:
-        state, action, next_state, reward = batch
+        state, action, next_state, reward, done = batch
 
         embedding, signal = self.embedding.forward(state)
         next_embedding, next_signal = self.embedding.forward(next_state)
