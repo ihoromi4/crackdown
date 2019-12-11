@@ -10,14 +10,16 @@ __all__ = [
 BUFFER_TEMPLATE = (
     ('state', (1, 128, 128), torch.float32),
     ('action', (4,), torch.float32),
+    ('next_state', (1, 128, 128), torch.float32),
     ('reward', (1,), torch.float32),
     ('done', (1,), torch.float32),
 )
 BATCH_TEMPLATE = (
-    ('state', -1),
-    ('action', 0),
     ('state', 0),
+    ('action', 0),
+    ('next_state', 0),
     ('reward', 0),
+    ('done', 0),
 )
 
 
