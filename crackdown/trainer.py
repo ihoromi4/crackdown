@@ -8,10 +8,10 @@ __all__ = [
 
 
 class Trainer:
-    def __init__(self, agent, episode_steps_limit: int = 0):
+    def __init__(self, agent, episode_steps_limit: int = 0, render: bool = False):
         self.agent = agent
-
         self.episode_steps_limit = episode_steps_limit
+        self.render = render
 
     def on_step_end(self, report: dict):
         pass
@@ -34,7 +34,9 @@ class Trainer:
 
         for step_i in itertools.count(1):
             next_state, reward, done, info = env.step(action)
-            env.render()
+
+            if self.render:
+                env.render()
 
             rewards.append(reward)
 
