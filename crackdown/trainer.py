@@ -2,6 +2,11 @@ import itertools
 import numpy as np
 import gym
 
+try:
+    from tqdm.notebook import tqdm
+except ImportError:
+    from tqdm import tqdm
+
 __all__ = [
     'Trainer'
 ]
@@ -27,33 +32,43 @@ class Trainer:
         assert isinstance(steps_limit, int)
 
         rewards = []
+        sum_reward = 0
+        avg_reward = 0
         step_i = 0
 
         state = env.reset()
         action = self.agent.predict(state)
 
-        for step_i in itertools.count(1):
-            next_state, reward, done, info = env.step(action)
+        with tqdm(desc="Step", total=steps_limit if (steps_limit > 0) else None) as steps_barr:
+            for step_i in itertools.count(1):
 
-            if self.render:
-                env.render()
+                next_state, reward, done, info = env.step(action)
 
-            rewards.append(reward)
+                sum_reward += reward
+                avg_reward = sum_reward / step_i
 
-            report = self.agent.update(state, action, next_state, reward, done)
-            action = self.agent.predict(next_state)
+                steps_barr.update(step_i)
+                steps_barr.set_postfix(sum_reward=sum_reward, avg_reward=avg_reward)
 
-            self.on_step_end(report)
+                if self.render:
+                    env.render()
 
-            state = next_state
+                rewards.append(reward)
 
-            if done:
-                print("Episode finished after {} timesteps".format(step_i + 1))
-                break
-            elif (self.episode_steps_limit > 0) and (step_i >= self.episode_steps_limit):
-                break
-            if (steps_limit > 0) and (step_i >= steps_limit):
-                break
+                report = self.agent.update(state, action, next_state, reward, done)
+                action = self.agent.predict(next_state)
+
+                self.on_step_end(report)
+
+                state = next_state
+
+                if done:
+                    print("Episode finished after {} timesteps".format(step_i + 1))
+                    break
+                elif (self.episode_steps_limit > 0) and (step_i >= self.episode_steps_limit):
+                    break
+                if (steps_limit > 0) and (step_i >= steps_limit):
+                    break
 
         return {
             'steps': step_i,
@@ -70,21 +85,23 @@ class Trainer:
         rewards = []
 
         try:
-            for episode_i in itertools.count(1):
-                print('Episode:', episode_i)
+            with tqdm(desc="Episode", total=episodes_limit if (episodes_limit > 0) else None) as progress_barr:
+                for episode_i in itertools.count(1):
+                    progress_barr.update(episode_i)
+                    # print('Episode:', episode_i)
 
-                report = self.train_episode(env, steps_limit - passed_steps)
+                    report = self.train_episode(env, steps_limit - passed_steps)
 
-                passed_steps += report['steps']
-                rewards.extend(report['rewards'])
-                report['episode'] = episode_i
+                    passed_steps += report['steps']
+                    rewards.extend(report['rewards'])
+                    report['episode'] = episode_i
 
-                self.on_episode_end(report)
+                    self.on_episode_end(report)
 
-                if (episodes_limit > 0) and (episode_i >= episodes_limit):
-                    break
-                elif (steps_limit > 0) and (passed_steps >= steps_limit):
-                    break
+                    if (episodes_limit > 0) and (episode_i >= episodes_limit):
+                        break
+                    elif (steps_limit > 0) and (passed_steps >= steps_limit):
+                        break
         except KeyboardInterrupt:
             if catch_interruption:
                 print('Interrupted by User.')

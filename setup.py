@@ -12,5 +12,6 @@ setup(
         'numpy',
         'torch',
         'gym',
+        'tqdm>=4.41',
     ]
 )
