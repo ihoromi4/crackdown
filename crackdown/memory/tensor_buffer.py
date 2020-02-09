@@ -1,4 +1,6 @@
+import warnings
 from typing import Union
+from collections import OrderedDict
 import numpy as np
 import torch
 import torch.nn as nn
@@ -7,14 +9,14 @@ __all__ = [
     'TensorBuffer',
 ]
 
-BUFFER_TEMPLATE = (
+SAMPLE_BUFFER_TEMPLATE = (
     ('state', (1, 128, 128), torch.float32),
     ('action', (4,), torch.float32),
     ('next_state', (1, 128, 128), torch.float32),
     ('reward', (1,), torch.float32),
     ('done', (1,), torch.float32),
 )
-BATCH_TEMPLATE = (
+SAMPLE_BATCH_TEMPLATE = (
     ('state', 0),
     ('action', 0),
     ('next_state', 0),
@@ -24,45 +26,86 @@ BATCH_TEMPLATE = (
 
 
 class TensorBuffer(nn.Module):
+    """
+    Reinforcement Learning Trajectory Container
+    Collect any tensor data in named arrays. Sample batches of any saved data with any index shift.
+    Save numerical data, boolean, numpy.ndarray, torch.Tensor with casting to torch.Tensor.
+
+    Args:
+        size (int): len of fixed-size internal tensor buffer
+        buffer_template (tuple, optional): description (name, shape, dtype) of buffered data
+        batch_template (tuple, optional): buffer values to sample from container by __getitem__() or sample()
+        expand_buffer (bool, optional): add buffers dynamically in runtime by kwargs of put()
+        extend_buffer (bool, optional): increase length of buffer by 2x on hit of length limit
+    """
+
     def __init__(self,
                  size: int,
-                 buffer_template: tuple = BUFFER_TEMPLATE,
-                 batch_template: tuple = BATCH_TEMPLATE):
+                 batch_template: tuple = (),
+                 buffer_template: tuple = (),
+                 expand_buffer: bool = True,
+                 extend_buffer: bool = False):
 
         assert isinstance(size, int), "expected size type is int, got %s" % type(size)
-        assert isinstance(buffer_template, tuple), "expected buffer_template type is tuple, got %s" % type(buffer_template)
+        assert size > 0, "expected size > 0, got %s" % size
+        assert isinstance(buffer_template, tuple), \
+            "expected buffer_template type is tuple, got %s" % type(buffer_template)
         assert isinstance(batch_template, tuple), "expected batch_template type is tuple, got %s" % type(batch_template)
+        assert isinstance(expand_buffer, bool), "expected expand_buffer type is bool, got %s" % type(expand_buffer)
 
         super().__init__()
 
-        self.size = size
-        self.buffer_template = buffer_template
-        self.batch_template = batch_template
-
         self.index = 0
+        self.size = size
+        self.batch_template = batch_template
+        self.buffer_template = ()
+        self.expand_buffer = expand_buffer
+        self.extend_buffer = extend_buffer
         self.buffer = nn.ParameterDict({})
 
-        self.initialize_buffer()
+        self._initialize_buffer(buffer_template)
 
-    def initialize_buffer(self):
-        self.buffer = nn.ParameterDict({
-            name: nn.Parameter(torch.zeros((self.size,) + shape, dtype=dtype), False) for
-            name, shape, dtype in self.buffer_template
-        })
+    def _initialize_buffer(self, buffer_template: tuple) -> None:
+        for args in buffer_template:
+            self.add_buffer(*args)
 
-    def add_buffer(self, name: str, shape: Union[tuple, torch.Size], dtype: torch.dtype = torch.float32):
+    def add_buffer(self,
+                   name: str,
+                   shape: Union[tuple, torch.Size],
+                   dtype: torch.dtype = torch.float32) -> None:
+
+        """Add new buffer tensor array with specific name, shape and dtype"""
+
         assert isinstance(name, str), "expected name type is str, got %s" % type(name)
-        assert isinstance(shape, (tuple, torch.Size)), "expected shape type is tuple or torch.Size, got %s" % type(shape)
+        assert isinstance(shape, (tuple, torch.Size)), \
+            "expected shape type is tuple or torch.Size, got %s" % type(shape)
         assert isinstance(dtype, torch.dtype), 'expected dtype type is torch.dtype, got %s' % type(dtype)
 
         tensor = torch.zeros((self.size,) + shape, dtype=dtype)
-        self.buffer[name] = nn.Parameter(tensor)
-        self.buffer_template += (name, shape, dtype)
+        self.buffer[name] = nn.Parameter(tensor, False)
+        self.buffer_template += ((name, shape, dtype),)
 
-    def reset(self):
+    def reset(self) -> None:
+        """Restart buffer filling with overriding"""
+
         self.index = 0
 
-    def rolling(self, percent: float = 0.2):
+    def extend(self, factor: float = 2.0) -> None:
+        """Extend length of the buffer by specified factor"""
+
+        additional_size = int(self.size * (factor - 1.0))
+
+        for name, values in self.buffer.items():
+            _, *sample_shape = values.shape
+            extension = torch.empty([additional_size] + sample_shape, dtype=values.dtype)
+            extended = torch.cat([values, extension], dim=0)
+            self.buffer[name] = nn.Parameter(extended, False)
+
+        self.size += additional_size
+
+    def rolling(self, percent: float = 0.2) -> None:
+        """Restart buffer filling with overriding and store some percent of data"""
+
         n_samples = int(len(self) * percent)
         assert n_samples > 0
 
@@ -71,7 +114,22 @@ class TensorBuffer(nn.Module):
 
         self.index = n_samples
 
-    def __len__(self):
+    def on_hit_length_limit(self) -> None:
+        if self.extend_buffer:
+            self.extend()
+        else:
+            self.rolling()
+
+    def __repr__(self):
+        repr_ = super().__repr__()
+
+        bytes_size = sum([t.element_size() * t.nelement() for t in self.buffer.values()])
+
+        return repr_ + "\n" + \
+               'Length: %s/%s\n' % (len(self), self.size) + \
+               "Total size: %s kb" % (bytes_size >> 10)
+
+    def __len__(self) -> int:
         return self.index
 
     def __getattr__(self, key):
@@ -80,23 +138,77 @@ class TensorBuffer(nn.Module):
 
         return super().__getattr__(key)
 
-    def put(self, *args, **kwargs):
-        for sample, name in zip(args, np.take(self.buffer_template, 0, -1)):
-            self.buffer[name][self.index] = sample
+    def put(self, *args, **kwargs) -> None:
+        """Put data sample to buffer"""
+
+        def to_torch_tensor(value):
+            if isinstance(value, torch.Tensor):
+                return value
+            if isinstance(value, np.ndarray):
+                return torch.from_numpy(value)
+            elif isinstance(value, (int, float, bool)):
+                return torch.tensor([value])
+            else:
+                return torch.tensor(value)
+
+        assert len(args) <= len(self.buffer)
+
+        # resolve values' names
+        names = [name for name, *_ in self.buffer_template]
+        named_args: dict = {name: sample for name, sample in zip(names, args)}
+        kwargs.update(named_args)
 
         for key, value in kwargs.items():
+            value = to_torch_tensor(value)
+
+            if key not in self.buffer:
+                if not self.expand_buffer:
+                    raise IndexError('buffer does not contain %s key' % key)
+
+                self.add_buffer(key, value.shape, value.dtype)
+
             self.buffer[key][self.index] = value
 
         self.index += 1
 
         if self.index >= self.size:
-            self.rolling()
+            self.on_hit_length_limit()
 
-    def batch(self, size: int, template: tuple = None):
-        template = template or self.batch_template
+    def batch(self, size: int, template: tuple = None) -> list:
+        warnings.warn(
+            "batch is deprecated now and will be deleted",
+            DeprecationWarning
+        )
 
-        min_ = np.take(template, 1, -1).astype(int).min()
-        from_ = range(-min_, len(self))
-        keys = np.random.choice(from_, size, replace=True)
+        return self.sample(size, template)
 
-        return [self.buffer[name][keys + index] for name, index in template]
+    def __getitem__(self, key: int) -> OrderedDict:
+        """Get one buffer sample by batch_template"""
+
+        assert isinstance(key, int)
+        assert key < len(self)
+
+        # check bounds
+        template_shifts = [index for _, index, *_ in self.batch_template]
+        min_shift = min(template_shifts)
+        max_shift = max(template_shifts)
+        assert key >= min_shift
+        assert key < len(self) - max_shift
+
+        return OrderedDict(((name, self.buffer[name][key + index]) for name, index in self.batch_template))
+
+    def sample(self, size: int, template: tuple = None) -> list:
+        """Sample data batch from buffer"""
+
+        template = self.batch_template if (template is None) else template
+
+        assert isinstance(template, tuple), "expected template type is tuple, got %s" % type(template)
+        assert len(template) > 0, "expected non empty template"
+
+        template_shifts = [index for _, index, *_ in template]
+        min_shift = min(template_shifts)
+        max_shift = max(template_shifts)
+        from_range = range(-min_shift, len(self) - max_shift)
+        indexes = np.random.choice(from_range, size, replace=True)
+
+        return [self.buffer[name][indexes + shift] for name, shift in template]
