@@ -35,6 +35,7 @@ class TensorBuffer(nn.Module):
         size (int): len of fixed-size internal tensor buffer
         buffer_template (tuple, optional): description (name, shape, dtype) of buffered data
         batch_template (tuple, optional): buffer values to sample from container by __getitem__() or sample()
+        device (str|torch.device, optional): torch device tensors allocate to
         expand_buffer (bool, optional): add buffers dynamically in runtime by kwargs of put()
         extend_buffer (bool, optional): increase length of buffer by 2x on hit of length limit
     """
@@ -43,6 +44,7 @@ class TensorBuffer(nn.Module):
                  size: int,
                  batch_template: tuple = (),
                  buffer_template: tuple = (),
+                 device: Union[str, torch.device] = None,
                  expand_buffer: bool = True,
                  extend_buffer: bool = False):
 
@@ -59,6 +61,7 @@ class TensorBuffer(nn.Module):
         self.size = size
         self.batch_template = batch_template
         self.buffer_template = ()
+        self.device = device
         self.expand_buffer = expand_buffer
         self.extend_buffer = extend_buffer
         self.buffer = nn.ParameterDict({})
@@ -72,7 +75,8 @@ class TensorBuffer(nn.Module):
     def add_buffer(self,
                    name: str,
                    shape: Union[tuple, torch.Size],
-                   dtype: torch.dtype = torch.float32) -> None:
+                   dtype: torch.dtype = torch.float32,
+                   device: Union[str, torch.device] = None) -> None:
 
         """Add new buffer tensor array with specific name, shape and dtype"""
 
@@ -81,7 +85,8 @@ class TensorBuffer(nn.Module):
             "expected shape type is tuple or torch.Size, got %s" % type(shape)
         assert isinstance(dtype, torch.dtype), 'expected dtype type is torch.dtype, got %s' % type(dtype)
 
-        tensor = torch.zeros((self.size,) + shape, dtype=dtype)
+        device = device or self.device
+        tensor = torch.zeros((self.size,) + shape, dtype=dtype, device=device)
         self.buffer[name] = nn.Parameter(tensor, False)
         self.buffer_template += ((name, shape, dtype),)
 
@@ -97,7 +102,7 @@ class TensorBuffer(nn.Module):
 
         for name, values in self.buffer.items():
             _, *sample_shape = values.shape
-            extension = torch.empty([additional_size] + sample_shape, dtype=values.dtype)
+            extension = torch.empty([additional_size] + sample_shape, dtype=values.dtype, device=values.device)
             extended = torch.cat([values, extension], dim=0)
             self.buffer[name] = nn.Parameter(extended, False)
 
@@ -197,7 +202,7 @@ class TensorBuffer(nn.Module):
 
         return OrderedDict(((name, self.buffer[name][key + index]) for name, index in self.batch_template))
 
-    def sample(self, size: int, template: tuple = None) -> list:
+    def sample(self, size: int, template: tuple = None, device=None) -> list:
         """Sample data batch from buffer"""
 
         template = self.batch_template if (template is None) else template
@@ -211,4 +216,4 @@ class TensorBuffer(nn.Module):
         from_range = range(-min_shift, len(self) - max_shift)
         indexes = np.random.choice(from_range, size, replace=True)
 
-        return [self.buffer[name][indexes + shift] for name, shift in template]
+        return [self.buffer[name][indexes + shift].to(device) for name, shift in template]
