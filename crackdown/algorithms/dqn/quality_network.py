@@ -33,10 +33,11 @@ class QualityNetwork(nn.Module):
         quality = self.forward(embedding)
         quality = torch.gather(quality, 1, action)
 
-        if next_quality is None:
-            with torch.no_grad():
+        with torch.no_grad():
+            if next_quality is None:
                 next_quality = self.forward(next_embedding)
-                next_quality = torch.max(next_quality, dim=1, keepdim=True)[0]
+
+            next_quality, _ = torch.max(next_quality, dim=1, keepdim=True)
 
         # temporal difference residual
         true_quality = reward + self.discount_factor * next_quality
@@ -46,9 +47,8 @@ class QualityNetwork(nn.Module):
 
         return loss, advantage
 
-    def fit(self, embedding, action, true_quality):
-        quality = self.forward(embedding, action)
+    def fit(self, embedding, true_quality):
+        quality = self.forward(embedding)
         loss = self.criterion(quality, true_quality)
 
         return loss
-
