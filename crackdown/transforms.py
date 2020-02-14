@@ -1,17 +1,22 @@
 import numpy as np
-from torchvision.transforms import *
+import albumentations
+from albumentations import Crop, Resize
+from albumentations.pytorch.transforms import ToTensor
 
 __all__ = [
+    'Compose',
     'ToTensor',
     'ToNumpy',
-    'Transpose',
-    'Scale',
-    'CenterCrop',
+    'Crop',
+    'Resize',
     'MaxPooling',
     'EMPTY',
-    'downscale',
-    'crop_center',
 ]
+
+
+class Compose(albumentations.Compose):
+    def __call__(self, image):
+        return super().__call__(image=image)['image']
 
 
 class ToNumpy:
@@ -22,37 +27,6 @@ class ToNumpy:
             arr = arr[:, :, np.newaxis]
 
         return arr
-
-
-class Transpose:
-    def __init__(self, order=(2, 0, 1)):
-        self.order = order
-
-    def __call__(self, arr):
-        return np.transpose(arr, self.order)
-
-
-class Scale:
-    def __init__(self, factor: float = 1 / 255):
-        self.factor = factor
-
-    def __call__(self, arr):
-        return arr * self.factor
-
-
-class CenterCrop:
-    def __init__(self, size: int):
-        assert isinstance(size, int)
-
-        self.size = size
-
-    def __call__(self, arr):
-        shape = np.array(arr.shape[:2])
-        center = shape / 2
-        half_size = self.size / 2
-        left_up = (center - half_size).astype(np.int)
-        right_down = (center + half_size).astype(np.int)
-        return arr[tuple([slice(a, b) for a, b in zip(left_up, right_down)])]
 
 
 class MaxPooling:
@@ -69,25 +43,6 @@ class MaxPooling:
         return arr.reshape(width // max_pool, max_pool, height // max_pool, max_pool, -1).max(axis=(1, 3))
 
 
-EMPTY = ToTensor()
-
-
-def downscale(shape: tuple, factor: float = 0.5):
-    shape = np.array(shape)
-    shape = (shape[:2] * factor).astype(np.int)
-
-    return transforms.Compose([
-        ToPILImage(),
-        Resize(shape),
-        ToNumpy(),
-        Transpose((2, 0, 1)),
-        Scale(),
-    ])
-
-
-def crop_center(size: int):
-    return transforms.Compose([
-        CenterCrop(size),
-        Transpose((2, 0, 1)),
-        Scale()
-    ])
+EMPTY = Compose([
+    ToTensor(),
+])

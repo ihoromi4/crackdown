@@ -10,8 +10,9 @@ setup(
     packages=find_packages(exclude=["docs", "tests", "examples"]),
     install_requires=[
         'numpy',
-        'torch',
+        'torch>=1.4',
         'gym',
         'tqdm>=4.41',
+        'albumentations>=0.4.3',
     ]
 )
