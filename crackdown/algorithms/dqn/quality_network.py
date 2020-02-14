@@ -15,10 +15,11 @@ class QualityNetwork(nn.Module):
         self.output_dim = output_dim
         self.discount_factor = discount_factor
 
+        hidden_dim = (output_dim + embedding_dim) // 2
         self.transform = nn.Sequential(
-            nn.Linear(embedding_dim, 64, bias=True),
+            nn.Linear(embedding_dim, hidden_dim, bias=True),
             nn.Softplus(),
-            nn.Linear(64, output_dim, bias=True)
+            nn.Linear(hidden_dim, output_dim, bias=True)
         )
 
         self.criterion = nn.MSELoss()
@@ -38,6 +39,7 @@ class QualityNetwork(nn.Module):
                 next_quality = self.forward(next_embedding)
 
             next_quality, _ = torch.max(next_quality, dim=1, keepdim=True)
+            # next_quality = torch.gather(next_quality, 1, action)
 
         # temporal difference residual
         true_quality = reward + self.discount_factor * next_quality
