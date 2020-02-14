@@ -35,11 +35,12 @@ class Trainer:
         sum_reward = 0
         avg_reward = 0
         step_i = 0
+        total_steps = max(0, steps_limit) or None
 
         state = env.reset()
         action = self.agent.predict(state)
 
-        with tqdm(desc="Step", total=steps_limit if (steps_limit > 0) else None) as steps_barr:
+        with tqdm(desc="Step", total=total_steps) as steps_bar:
             for step_i in itertools.count(1):
 
                 next_state, reward, done, info = env.step(action)
@@ -47,8 +48,8 @@ class Trainer:
                 sum_reward += reward
                 avg_reward = sum_reward / step_i
 
-                steps_barr.update(step_i)
-                steps_barr.set_postfix(sum_reward=sum_reward, avg_reward=avg_reward)
+                steps_bar.update(1)
+                steps_bar.set_postfix(sum_reward=sum_reward, avg_reward=avg_reward)
 
                 if self.render:
                     env.render()
@@ -63,11 +64,8 @@ class Trainer:
                 state = next_state
 
                 if done:
-                    print("Episode finished after {} timesteps".format(step_i + 1))
                     break
-                elif (self.episode_steps_limit > 0) and (step_i >= self.episode_steps_limit):
-                    break
-                if (steps_limit > 0) and (step_i >= steps_limit):
+                elif (steps_limit > 0) and (step_i >= steps_limit):
                     break
 
         return {
@@ -79,18 +77,22 @@ class Trainer:
         assert isinstance(env, gym.Env)
         assert isinstance(steps_limit, int)
         assert isinstance(episodes_limit, int)
+        assert isinstance(catch_interruption, bool)
 
         passed_steps = 0
         episode_i = 0
         rewards = []
+        total_episodes = max(0, episodes_limit) or None
 
         try:
-            with tqdm(desc="Episode", total=episodes_limit if (episodes_limit > 0) else None) as progress_barr:
+            with tqdm(desc="Episode", total=total_episodes) as progress_bar:
                 for episode_i in itertools.count(1):
-                    progress_barr.update(episode_i)
-                    # print('Episode:', episode_i)
+                    progress_bar.update(1)
 
-                    report = self.train_episode(env, steps_limit - passed_steps)
+                    episode_steps_limit = max(0, self.episode_steps_limit)
+                    remains_steps = max(0, steps_limit - passed_steps)
+                    episode_steps_limit = min(episode_steps_limit, remains_steps) or max(episode_steps_limit, remains_steps)
+                    report = self.train_episode(env, episode_steps_limit)
 
                     passed_steps += report['steps']
                     rewards.extend(report['rewards'])
