@@ -202,7 +202,7 @@ class TensorBuffer(nn.Module):
 
         return OrderedDict(((name, self.buffer[name][key + index]) for name, index in self.batch_template))
 
-    def sample(self, size: int, template: tuple = None, device=None) -> list:
+    def sample(self, size: int, template: tuple = None, device=None) -> OrderedDict:
         """Sample data batch from buffer"""
 
         template = self.batch_template if (template is None) else template
@@ -216,4 +216,4 @@ class TensorBuffer(nn.Module):
         from_range = range(-min_shift, len(self) - max_shift)
         indexes = np.random.choice(from_range, size, replace=True)
 
-        return [self.buffer[name][indexes + shift].to(device) for name, shift in template]
+        return OrderedDict(((name, self.buffer[name][indexes + shift].to(device)) for name, shift in template))

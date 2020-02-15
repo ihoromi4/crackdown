@@ -1,3 +1,4 @@
+from collections import OrderedDict
 import torch
 import torch.nn as nn
 
@@ -13,7 +14,7 @@ class Agent(nn.Module):
     def predict(self, state, deterministic: bool = False):
         pass
     
-    def update(self, state, action, next_state, reward, is_done: bool = False):
+    def update(self, batch: OrderedDict):
         pass
         
     def save(self, filepath: str):
