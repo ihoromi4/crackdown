@@ -15,17 +15,15 @@ __all__ = [
     'DeepQualityNetworkAgent',
 ]
 
-BATCH_TEMPLATE = (
-    ('state', 0),
-    ('action', 0),
-    ('next_state', 0),
-    ('reward', 0),
-    ('done', 0),
-)
-
 
 class DeepQualityNetworkAgent(Agent):
-    batch_template = BATCH_TEMPLATE
+    batch_template = (
+        ('state', 0),
+        ('action', 0),
+        ('next_state', 0),
+        ('reward', 0),
+        ('done', 0),
+    )
 
     def __init__(self,
                  env: gym.Env,
@@ -34,8 +32,7 @@ class DeepQualityNetworkAgent(Agent):
                  discount_factor: float = 0.95,
                  target_update_factor: float = 0.99,
                  double_dqn: bool = True,
-                 dueling_dqn: bool = False,
-                 report: object = None):
+                 dueling_dqn: bool = False):
 
         super().__init__()
 
@@ -44,7 +41,6 @@ class DeepQualityNetworkAgent(Agent):
         self.target_update_factor = target_update_factor
         self.double_dqn = double_dqn
         self.dueling_dqn = dueling_dqn
-        self.report = report or Report()
 
         self.embedding = ImageEmbedding(env.observation_space.shape[-1], embedding_capacity, 5)
         self.action_head = make_action_head(env.action_space)
@@ -80,8 +76,13 @@ class DeepQualityNetworkAgent(Agent):
             else:
                 next_quality = None
 
-        loss, _ = self.quality_net.update(embedding, action, reward, next_embedding, next_quality)
+        loss, advantage = self.quality_net.update(embedding, action, reward, next_embedding, next_quality)
 
         polyak_update(self.target_quality_net, self.quality_net, self.target_update_factor)
 
-        return loss
+        return {
+            'loss': loss,
+            'advantage': advantage,
+            'embedding': embedding,
+            'next_embedding': next_embedding,
+        }

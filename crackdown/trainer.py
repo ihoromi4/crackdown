@@ -1,4 +1,5 @@
 import itertools
+from collections import OrderedDict
 import numpy as np
 import gym
 from torch import nn
@@ -61,7 +62,7 @@ class Trainer:
     def on_train_end(self, report: dict):
         pass
 
-    def update_replay(self, state, action, next_state, reward, is_done: bool = False) -> dict:
+    def update_replay(self, state, action, next_state, reward, done: bool = False):
         state = np.array(state)
         action = np.array(action)
         next_state = np.array(next_state)
@@ -70,27 +71,33 @@ class Trainer:
         state = self.agent.observation_transform(state)
         next_state = self.agent.observation_transform(next_state)
 
-        self.replay.put(
-            state=state,
-            action=action,
-            next_state=next_state,
-            reward=float(reward),
-            done=bool(is_done)
-        )
+        transition = OrderedDict((
+            ('state', state),
+            ('action', action),
+            ('next_state', next_state),
+            ('reward', reward),
+            ('done', done),
+        ))
+
+        if hasattr(self.agent, 'on_transition'):
+            transition = self.agent.on_transition(transition)
+
+        self.replay.put(**transition)
 
         if len(self.replay) > self.batch_size:
             batch = self.replay.sample(self.batch_size, device=self.device)
-            loss = self.agent.update(batch)
-            self.optimize(loss)
+            result = self.agent.update(batch)
+            self.optimize(result['loss'])
 
-            self.report.add_scalar('loss', loss.item(), global_step=self.iteration)
+            for name, value in result.items():
+                self.report.add_scalar(name, value.mean().item(), global_step=self.iteration)
 
     def sample_action(self, state, deterministic: bool = False):
         threshold = (1.0 - self.iteration / self.start_exploration_steps)
         threshold = max(self.min_epsilon, threshold)
 
         if not deterministic and np.random.random() < threshold:
-            return self.agent.ction_head.sample()[0]
+            return self.agent.action_head.sample()[0]
         else:
             return self.agent.predict(state, deterministic)
 
@@ -113,7 +120,7 @@ class Trainer:
         state = env.reset()
         action = self.agent.predict(state)
 
-        with tqdm(desc="Step", total=total_steps) as steps_bar:
+        with tqdm(desc="Steps", total=total_steps) as steps_bar:
             for step_i in itertools.count(1):
 
                 next_state, reward, done, info = env.step(action)
@@ -129,7 +136,7 @@ class Trainer:
 
                 rewards.append(reward)
 
-                loss = self.update_replay(state, action, next_state, reward, done)
+                self.update_replay(state, action, next_state, reward, done)
                 action = self.agent.predict(next_state)
 
                 # self.on_step_end(report)
@@ -172,7 +179,7 @@ class Trainer:
         total_episodes = max(0, episodes_limit) or None
 
         try:
-            with tqdm(desc="Episode", total=total_episodes) as progress_bar:
+            with tqdm(desc="Episodes", total=total_episodes) as progress_bar:
                 for episode_i in itertools.count(1):
                     progress_bar.update(1)
 

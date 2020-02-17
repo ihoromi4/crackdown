@@ -1,3 +1,5 @@
 .idea
 Crackdown.egg-info
 __pycache__
+venv
+.py[cod]
