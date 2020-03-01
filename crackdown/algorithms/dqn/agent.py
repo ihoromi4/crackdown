@@ -44,13 +44,18 @@ class DeepQualityNetworkAgent(Agent):
 
         self.embedding = ImageEmbedding(env.observation_space.shape[-1], embedding_capacity, 5)
         self.action_head = make_action_head(env.action_space)
-        self.quality_net = QualityNetwork(self.embedding.output_shape[-1], self.action_head.input_shape[-1], discount_factor)
+        self.quality_net = QualityNetwork(
+            self.embedding.output_shape[-1],
+            self.action_head.input_shape[-1],
+            discount_factor,
+            dueling_dqn
+        )
 
         if double_dqn:
             self.target_quality_net = copy.deepcopy(self.quality_net)
 
         if dueling_dqn:
-            raise ValueError()
+            self.value_net = QualityNetwork(self.embedding.output_shape[-1], 1, discount_factor)
 
         self.reset()
 
